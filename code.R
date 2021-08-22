@@ -196,3 +196,46 @@ if (length(which(
 #write to file
 write.csv(fin_vid_df_join, 'full_pitch_info.csv', row.names = F)
 
+##################
+library(ggplot2)
+fin_vid_df_join<-read.csv('full_pitch_info.csv')
+#+- .7 gives me approximately 95% strikes when top and bottom conditions are met
+fin_vid_df_join %>% filter(plate_z >= sz_bot &
+                             plate_z <= sz_top &
+                             plate_x >= -.7 &
+                             plate_x <= .7) %>% group_by(type) %>% summarise(n = n()) %>% mutate(perc =
+                                                                                                   n / sum(n))
+ggplot(fin_vid_df_join, aes(plate_x, plate_z, col = type)) + geom_point() +
+  geom_rect(mapping = aes(
+    xmax = .7,
+    xmin = -.7,
+    ymin = mean(sz_bot),
+    ymax = mean(sz_top)),
+    alpha = 0,
+    color = "black"
+  )
+
+model <- glm(
+  type_bin ~ plate_x + I(plate_x^2) + plate_z + I(plate_z^2) + sz_top + sz_bot,
+  fin_vid_df_join %>% mutate(type_bin = ifelse(type=='S',1,0)),
+  family = 'binomial'
+)
+
+summary(model)
+
+vid_df_pred <-
+  fin_vid_df_join %>% mutate(type_bin = ifelse(type == 'S', 1, 0)) %>%
+  cbind(data.frame(pred = predict(model, fin_vid_df_join, type = 'response')))
+
+k <- vid_df_pred %>% mutate(
+  err = type_bin - pred,
+  stl = ifelse(pred < .5 &
+                 type == 'S', 1, 0),
+  lss = ifelse(pred > .5 &
+                 type == 'B', 1, 0)
+) %>% group_by(fielder_2_1) %>% summarise(
+  n = n(),
+  err = mean(err),
+  steals = sum(stl),
+  losses = sum(lss)
+)
